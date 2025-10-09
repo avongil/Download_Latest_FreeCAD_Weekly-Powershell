@@ -9,5 +9,9 @@ $portableDir = "C:\Software-Portable"
 ~~~
 
 You could run this script automatically every Monday and always be up to date on the bleeding edge of FreeCAD!
-
+\
+\
+![Task Scheduler Image](https://i.imgur.com/q1CkHC8.png"TaskScheduler")
+\
+\
 To all the FreeCAD developers and contributers, thank you for all your hard work. FreeCAD V1.1 is truly world class CAD software.
