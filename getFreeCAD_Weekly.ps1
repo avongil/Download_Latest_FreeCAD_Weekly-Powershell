@@ -1,5 +1,9 @@
 # PowerShell script to download the latest FreeCAD weekly build for Windows x86_64 (.7z),
-# verify its hash, extract it, move the extracted folder to a portable directory, and update a shortcut.
+# verify its hash, extract it to a portable directory (handling archives with or without root folder), 
+# optionally enable true portable mode with a launcher, and update a shortcut.
+
+# Switch for true portable mode (set to $true to store user data in $targetPath\.FreeCAD; $false to use system AppData)
+$enablePortableMode = $false
 
 # Variable for the portable directory (change this if needed)
 $portableDir = "C:\Software-Portable"
@@ -79,12 +83,12 @@ if (Test-Path $filePath) {
 
 if ($downloadNeeded) {
     Write-Host "Downloading $fileName from $($asset.browser_download_url)"
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $filePath
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$filePath"
     Write-Host "Download complete: $fileName"
     
     if ($null -ne $hashAsset) {
         Write-Host "Downloading $hashFileName from $($hashAsset.browser_download_url)"
-        Invoke-WebRequest -Uri $hashAsset.browser_download_url -OutFile $hashPath
+        Invoke-WebRequest -Uri $hashAsset.browser_download_url -OutFile "$hashPath"
         Write-Host "Download complete: $hashFileName"
         
         # Verify hash after download
@@ -114,31 +118,47 @@ if ($null -eq $sevenZipPath) {
     exit 1
 }
 
-# Extract the .7z file to Downloads directory
-Write-Host "Extracting $fileName to $downloadsDir"
-& $sevenZipPath x $filePath -o$downloadsDir -y
-
-# Determine the extracted folder name (assuming it's the file name without .7z)
+# Determine the target folder name (based on filename without .7z; optionally simplify to "FreeCAD_$tag" for a shorter name)
 $extractedFolderName = [System.IO.Path]::GetFileNameWithoutExtension($fileName)
-$extractedPath = Join-Path $downloadsDir $extractedFolderName
+# Alternative shorter name: $extractedFolderName = "FreeCAD_$tag"
 
-if (-not (Test-Path $extractedPath -PathType Container)) {
-    Write-Error "Extracted folder $extractedFolderName not found. Extraction may have failed or structure changed."
-    exit 1
-}
-
-# Target path in portable directory
 $targetPath = Join-Path $portableDir $extractedFolderName
 
-# Remove existing folder if it exists
+# Remove existing target folder if it exists
 if (Test-Path $targetPath) {
     Write-Host "Removing existing folder $targetPath"
-    Remove-Item $targetPath -Recurse -Force
+    Remove-Item "$targetPath" -Recurse -Force
 }
 
-# Move the extracted folder
-Write-Host "Moving $extractedFolderName to $portableDir"
-Move-Item -Path $extractedPath -Destination $portableDir
+# Create the target folder (ensures it's empty)
+New-Item -ItemType Directory -Path "$targetPath" -Force | Out-Null
+
+# Create a temporary extraction folder
+$tempPath = Join-Path $downloadsDir "FreeCAD_extract_temp"
+if (Test-Path $tempPath) {
+    Remove-Item "$tempPath" -Recurse -Force
+}
+New-Item -ItemType Directory -Path "$tempPath" -Force | Out-Null
+
+# Extract the .7z file to the temp folder
+Write-Host "Extracting $fileName to $tempPath"
+& $sevenZipPath x "$filePath" -o"$tempPath" -y
+
+# Check the contents of the temp folder to handle root folder if present
+$items = Get-ChildItem -Path $tempPath
+if ($items.Count -eq 1 -and $items[0].PSIsContainer) {
+    # Archive has a root folder; strip it by moving its contents
+    Write-Host "Detected root folder in archive. Stripping it."
+    $rootFolderPath = $items[0].FullName
+    Move-Item -Path (Join-Path $rootFolderPath "*") -Destination $targetPath -Force
+} else {
+    # No root folder; move all contents directly
+    Write-Host "No root folder detected. Moving contents directly."
+    Move-Item -Path (Join-Path $tempPath "*") -Destination $targetPath -Force
+}
+
+# Clean up the temp folder
+Remove-Item "$tempPath" -Recurse -Force
 
 # Verify FreeCAD.exe exists
 $exePath = Join-Path $targetPath "bin\FreeCAD.exe"
@@ -147,21 +167,33 @@ if (-not (Test-Path $exePath)) {
     exit 1
 }
 
+# Optionally create launch.bat for portable mode
+$launcherPath = $null
+if ($enablePortableMode) {
+    $launcherPath = Join-Path $targetPath "launch.bat"
+    $launcherContent = @"
+@echo off
+set FREECAD_USER_HOME=%~dp0.FreeCAD
+"%~dp0bin\FreeCAD.exe" %*
+"@
+    Set-Content -Path "$launcherPath" -Value $launcherContent
+}
+
 # Update the shortcut
 $shortcutPath = Join-Path $portableDir "freecad.exe.lnk"
 if (Test-Path $shortcutPath) {
     Write-Host "Deleting existing shortcut $shortcutPath"
-    Remove-Item $shortcutPath -Force
+    Remove-Item "$shortcutPath" -Force
 }
 
 $wsh = New-Object -ComObject WScript.Shell
 $shortcut = $wsh.CreateShortcut($shortcutPath)
-$shortcut.TargetPath = $exePath
+$shortcut.TargetPath = if ($enablePortableMode) { $launcherPath } else { $exePath }
 $shortcut.WorkingDirectory = $targetPath
-$shortcut.Description = "FreeCAD Weekly Build"
+$shortcut.Description = "FreeCAD Weekly Build" + $(if ($enablePortableMode) { " (Portable)" } else { "" })
 $shortcut.IconLocation = $exePath
 $shortcut.Save()
 
 Write-Host "Shortcut created at $shortcutPath"
 
-Write-Host "Update complete. You can launch FreeCAD from the shortcut."
+Write-Host "Update complete. Launch FreeCAD from the shortcut." + $(if ($enablePortableMode) { " User data will be in $targetPath\.FreeCAD." } else { " User data will be in system AppData." })
