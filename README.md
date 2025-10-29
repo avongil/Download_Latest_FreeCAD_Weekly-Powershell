@@ -1,7 +1,7 @@
 This script downloads the latest weekly build of FreeCAD on Windows.\
 \
 1 - downloads the latest Windows installer to the Downloads directory\
-  &nbsp;&nbsp;&nbsp;&nbsp;   If the latest is not yet online, it finds the latest.
+  &nbsp;&nbsp;&nbsp;&nbsp;   If the latest is not yet online, it finds the latest.\
 2 - extracts it to the specified portable software directory\
 3 - makes a link to the bin file inside the portable software dirctory so you can use the shortcut in your taskbar.\
  &nbsp;&nbsp;&nbsp;&nbsp; the directory is opened in File Explorer so you can easily drag it to your taskbar.
