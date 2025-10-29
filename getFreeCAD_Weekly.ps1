@@ -191,3 +191,5 @@ foreach ($folder in $olderFolders) {
     }
 }
 Write-Host "Update complete. Launch FreeCAD from the shortcut." + $(if ($enablePortableMode) { " User data will be in $targetPath\.FreeCAD." } else { " User data will be in system AppData." })
+Write-Host "Opening the portable directory for you to pin the shortcut to the taskbar."
+explorer $portableDir
